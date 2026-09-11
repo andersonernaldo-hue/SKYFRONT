@@ -9,6 +9,7 @@ import {
 import { computePlaneNodes, computeTalents, getPilot, getSkin } from "./data/talents";
 import { getWingman, wingmanStats, type WingmanDef } from "./data/wingmen";
 import { drawBoss, drawEnemy, drawPlane, drawPowerUp, drawWingman } from "./art";
+import { clearSprites, sprite } from "./sprites";
 import { Background } from "./background";
 import { ParticleSystem } from "./particles";
 import { Audio } from "./audio";
@@ -141,6 +142,7 @@ export class GameEngine {
   /** Live entity counters — avoids per-frame array allocations. */
   private nEnemies = 0; private nPBullets = 0; private nEBullets = 0;
   private trailsOn = true;
+  private auraTick = 0;
 
   /* camera */
   cam = { x: 360, y: 640, zoom: 1, tx: 360, ty: 640, tz: 1, killCam: 0, kickX: 0, kickY: 0, roll: 0 };
@@ -284,8 +286,13 @@ export class GameEngine {
       speed: st.speed * (1 + up.speed * 0.03) * nodes.speed * (1 + (pb.speed || 0)),
       damage: st.damage * (1 + up.damage * 0.06) * tal.damage * nodes.damage * (1 + (pb.damage || 0)) * planeLv,
       fireRate: st.fireRate * (1 + up.fireRate * 0.04) * tal.fireRate * nodes.fireRate * (1 + (pb.fireRate || 0)),
-      crit: st.crit + up.critical * 0.015 + tal.crit + nodes.crit + (pb.crit || 0),
-      critDmg: 2.1 * (tal.critDmg + (pb.critDmg || 0)),
+      // CRIT CHANCE: base + upgrades + talents + airframe nodes + pilot perk.
+      // Hard-capped at 75% so a maxed build still misses 1 in 4 shots.
+      crit: Math.min(0.75, Math.max(0, st.crit + up.critical * 0.015 + tal.crit + nodes.crit + (pb.crit || 0))),
+      // CRIT DAMAGE: multiplier applied on a critical hit (2.1 = +110% damage).
+      // Capped at 5x so numbers stay readable and bosses remain paced.
+      // +5% of the base multiplier per upgrade level, then talent/pilot multipliers.
+      critDmg: Math.min(5, Math.max(1.3, (2.1 + up.critDamage * 0.105) * (tal.critDmg + (pb.critDmg || 0)))),
       pierce: tal.pierce,
       ultCdMul: tal.ultCd * nodes.ability * (1 + (pb.ultCd || 0)),
       skillCdMul: tal.skillCd * nodes.ability * (1 + (pb.skillCd || 0)),
@@ -373,6 +380,8 @@ export class GameEngine {
     this.waveStall = 0;
     this.timers.length = 0;
     this.dmgAcc.clear(); this.dmgFlush = 0;
+    // New sector: drop cached sprites from other palettes so memory stays flat.
+    clearSprites();
     this.wave = 0; this.waveTimer = 1.4; this.spawnQueue = [];
     this.score = 0; this.kills = 0; this.coinsEarned = 0; this.crystalsEarned = 0;
     this.combo = 0; this.comboTimer = 0; this.bestCombo = 0; this.bossKilled = false;
@@ -456,7 +465,7 @@ export class GameEngine {
     }
     this.render();
     this.hudTimer += dt;
-    if (this.hudTimer > 0.07) { this.hudTimer = 0; this.pushHud(); }
+    if (this.hudTimer > 0.1) { this.hudTimer = 0; this.pushHud(); }
   };
 
   /* ============================ update ============================ */
@@ -739,11 +748,20 @@ export class GameEngine {
     for (let i = 0; i < arr.length; i++) {
       const b = arr[i];
       if (b.active) continue;
-      Object.assign(b, this.blankBullet(), o, { active: true, friendly });
+      // Manual field reset: the old blankBullet()+Object.assign pattern
+      // allocated two objects per shot and caused GC hitches in bullet hell.
+      b.active = true; b.friendly = friendly;
+      b.x = o.x ?? 0; b.y = o.y ?? 0; b.vx = o.vx ?? 0; b.vy = o.vy ?? 0;
+      b.r = o.r ?? 4; b.dmg = o.dmg ?? 1; b.life = o.life ?? 3;
+      b.color = o.color ?? "#fff"; b.kind = o.kind ?? "bullet";
+      b.pierce = o.pierce ?? 0; b.homing = o.homing ?? 0;
+      b.target = null; b.rot = 0; b.crit = o.crit ?? false;
+      b.w = o.w ?? 6; b.h = o.h ?? 14; b.spin = o.spin ?? 0; b.hitIds = 0;
       return b;
     }
     return null;
   }
+
 
   private fireWeapon() {
     const p = this.player;
@@ -1321,7 +1339,8 @@ export class GameEngine {
   private updateEnemies(dt: number, D: typeof DIFFICULTY["NORMAL"]) {
     const p = this.player;
     const speedMul = this.mapDef.speedMul;
-    this.updateAuras();
+    this.auraTick = (this.auraTick + 1) % 3;
+    if (this.auraTick === 0) this.updateAuras();
     for (const e of this.enemies) {
       if (!e.active) continue;
       e.t += dt;
@@ -2070,7 +2089,7 @@ export class GameEngine {
     this.dmgFlush = 0.16;
     // hard cap on simultaneous numbers: show the biggest hits, drop the noise
     const entries = [...this.dmgAcc.entries()].sort((a, b) => b[1].v - a[1].v);
-    const MAX = this.quality === "LOW" ? 3 : 6;
+    const MAX = this.quality === "LOW" ? 3 : 5;
     for (let i = 0; i < entries.length; i++) {
       const [uid, d] = entries[i];
       if (i < MAX) this.fx.damage(d.x, d.y, d.v, d.crit);
@@ -2436,7 +2455,7 @@ export class GameEngine {
       ctx.save();
       ctx.translate(e.x, e.y);
       if (e.scale !== 1) ctx.scale(e.scale, e.scale);
-      drawEnemy(ctx, e.def, e.t, e.hurt, glow);
+      this.drawEnemyCached(ctx, e.def, e.t, e.hurt, glow);
       if (e.elite && glow) {
         ctx.globalCompositeOperation = "lighter";
         ctx.strokeStyle = "#ffd23d";
@@ -2714,14 +2733,19 @@ export class GameEngine {
     if (CONFIG.DEBUG) this.drawDebug(ctx);
   }
 
+  private blurGrad: CanvasGradient | null = null;
+  private blurGradH = 0;
   private drawRadialBlur(ctx: CanvasRenderingContext2D, amt: number) {
+    if (!this.blurGrad || this.blurGradH !== this.H) {
+      this.blurGradH = this.H;
+      this.blurGrad = ctx.createRadialGradient(this.W / 2, this.H * 0.55, this.H * 0.2, this.W / 2, this.H * 0.55, this.H * 0.7);
+      this.blurGrad.addColorStop(0, "rgba(0,0,0,0)");
+      this.blurGrad.addColorStop(1, "rgba(180,225,255,0.9)");
+    }
     ctx.save();
     ctx.globalCompositeOperation = "lighter";
     ctx.globalAlpha = 0.1 * amt;
-    const g = ctx.createRadialGradient(this.W / 2, this.H * 0.55, this.H * 0.2, this.W / 2, this.H * 0.55, this.H * 0.7);
-    g.addColorStop(0, "rgba(0,0,0,0)");
-    g.addColorStop(1, "rgba(180,225,255,0.9)");
-    ctx.fillStyle = g;
+    ctx.fillStyle = this.blurGrad;
     ctx.fillRect(0, 0, this.W, this.H);
     ctx.restore();
   }
@@ -2737,14 +2761,69 @@ export class GameEngine {
     ctx.restore();
   }
 
+  /**
+   * Enemy hulls contain ~8 gradients each. They are cached as a short frame
+   * loop (6 frames) per archetype, so 40 enemies cost 40 drawImage calls
+   * instead of ~320 gradient rebuilds per frame. Engine flames, blinking
+   * lights and shield pulses are baked per frame, keeping them animated.
+   */
+  private static readonly E_FRAMES = 6;
+  private static readonly E_CYCLE = 0.96;
+  private drawEnemyCached(ctx: CanvasRenderingContext2D, def: EnemyDef, t: number, hurt: number, glow: boolean) {
+    const hurtNow = hurt > 0;
+    const frame = hurtNow ? 0 : Math.floor(((t % GameEngine.E_CYCLE) / GameEngine.E_CYCLE) * GameEngine.E_FRAMES);
+    const box = Math.ceil(190 * def.size);
+    const ss = 1.5; // supersample: crisp under devicePixelRatio scaling
+    const spr = sprite(
+      `e|${def.id}|${frame}|${hurtNow ? 1 : 0}|${glow ? 1 : 0}`,
+      box * ss, box * ss,
+      (c) => {
+        c.scale(ss, ss);
+        c.translate(box / 2, box / 2);
+        drawEnemy(c, def, hurtNow ? 0.37 : (frame / GameEngine.E_FRAMES) * GameEngine.E_CYCLE + 0.11, hurtNow ? 0.12 : 0, glow);
+      },
+    );
+    if (spr) ctx.drawImage(spr, -box / 2, -box / 2, box, box);
+    else drawEnemy(ctx, def, t, hurt, glow);
+  }
+
+  /**
+   * Bullets are the hottest draw path (hundreds per frame). Each unique
+   * kind/colour/size is rasterised once at 2x and then blitted, instead of
+   * rebuilding 1-3 gradients per bullet per frame.
+   */
   private drawBullet(ctx: CanvasRenderingContext2D, b: Bullet, glow: boolean) {
+    const pad = 26, tail = 24;
+    const sw = Math.max(b.w, b.r * 3.4) + pad * 2;
+    const sh = b.h + pad * 2 + tail;
+    const cx = sw / 2, cy = pad + b.h / 2;
+    const spr = sprite(`p|${b.kind}|${b.color}|${b.w}|${b.h}|${b.r}`, sw * 2, sh * 2, (c) => {
+      c.scale(2, 2);
+      c.translate(cx, cy);
+      this.paintBullet(c, b);
+    });
+    if (spr) {
+      ctx.save();
+      ctx.translate(b.x, b.y);
+      ctx.rotate(b.rot + Math.PI / 2);
+      if (glow && b.kind !== "meteor") ctx.globalCompositeOperation = "lighter";
+      ctx.drawImage(spr, -cx, -cy, sw, sh);
+      ctx.restore();
+      return;
+    }
+    // Fallback (no offscreen canvas available): original immediate-mode path.
     ctx.save();
     ctx.translate(b.x, b.y);
     ctx.rotate(b.rot + Math.PI / 2);
     if (glow) ctx.globalCompositeOperation = "lighter";
+    this.paintBullet(ctx, b);
+    ctx.restore();
+  }
+
+  /** Paints one bullet centred at the origin, pointing up. */
+  private paintBullet(ctx: CanvasRenderingContext2D, b: Bullet) {
     const w = b.w, h = b.h;
     if (b.kind === "meteor") {
-      ctx.globalCompositeOperation = "source-over";
       const g = ctx.createRadialGradient(0, 0, 2, 0, 0, w * 0.6);
       g.addColorStop(0, "#fff6d0");
       g.addColorStop(0.4, "#ff8a3d");
@@ -2815,7 +2894,6 @@ export class GameEngine {
       ctx.fillStyle = g;
       ctx.beginPath(); ctx.ellipse(0, 0, w / 2, h / 2, 0, 0, 7); ctx.fill();
     }
-    ctx.restore();
   }
 
   private drawWarning(ctx: CanvasRenderingContext2D) {

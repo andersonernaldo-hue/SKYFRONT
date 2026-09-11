@@ -161,11 +161,8 @@ function WingmenTab({ save, set, toast }: Omit<Props, "back">) {
               data-uibtn="1"
               key={w.id}
               onClick={() => { Audio.playSFX("click"); setSel(w.id); }}
-              className="panel-soft p-2 rounded flex flex-col items-center cursor-pointer relative"
-              style={{
-                borderColor: sel === w.id ? w.color : "rgba(255,255,255,0.12)",
-                boxShadow: sel === w.id ? `0 0 14px ${w.color}55` : "none",
-              }}
+              className={`drone-card panel-soft p-2 rounded flex flex-col items-center cursor-pointer relative ${sel === w.id ? "is-selected" : ""}`}
+              style={{ ["--dc" as any]: w.color }}
             >
               <span className="text-xl">{w.icon}</span>
               <span className="font-tech text-[8px] mt-0.5 text-center leading-tight" style={{ color: w.color }}>
@@ -323,13 +320,10 @@ function TalentTab({ save, set, toast }: Omit<Props, "back">) {
                   key={t.id}
                   onClick={() => buy(t.id)}
                   disabled={locked || maxed || !afford}
-                  className="panel-soft p-2.5 rounded text-left transition-all cursor-pointer disabled:cursor-not-allowed"
-                  style={{
-                    borderColor: maxed ? "#ffd23d" : lv > 0 ? br.color : "rgba(255,255,255,0.12)",
-                    opacity: locked ? 0.45 : 1,
-                    boxShadow: lv > 0 ? `0 0 12px ${br.color}33` : "none",
-                  }}
+                  className={`talent-node panel-soft p-2.5 rounded text-left cursor-pointer disabled:cursor-not-allowed ${maxed ? "is-maxed" : locked ? "is-locked" : lv > 0 ? "is-owned" : afford ? "is-afford" : ""}`}
+                  style={{ ["--tc" as any]: maxed ? "#ffd23d" : br.color }}
                 >
+                  <span className="talent-progress" style={{ width: `${(lv / t.max) * 100}%` }} aria-hidden="true" />
                   <div className="flex items-center justify-between">
                     <span className="text-lg">{t.icon}</span>
                     <span className="font-tech text-[10px]" style={{ color: maxed ? "#ffd23d" : br.color }}>

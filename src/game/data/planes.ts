@@ -255,6 +255,7 @@ export const UPGRADE_KEYS = [
   "fireRate",
   "speed",
   "critical",
+  "critDamage",
   "missiles",
   "shield",
 ] as const;
@@ -265,7 +266,8 @@ export const UPGRADE_META: Record<UpgradeKey, { label: string; icon: string; per
   health: { label: "HEALTH", icon: "❤️", perLevel: "+8% hull", base: 300 },
   fireRate: { label: "FIRE RATE", icon: "⚡", perLevel: "+4% rate", base: 350 },
   speed: { label: "SPEED", icon: "🛫", perLevel: "+3% speed", base: 250 },
-  critical: { label: "CRITICAL", icon: "🎯", perLevel: "+1.5% crit", base: 400 },
+  critical: { label: "CRITICAL", icon: "🎯", perLevel: "+1.5% crit chance", base: 400 },
+  critDamage: { label: "CRIT DAMAGE", icon: "💥", perLevel: "+5% crit damage", base: 450 },
   missiles: { label: "MISSILES", icon: "🚀", perLevel: "+1 side missile dmg", base: 450 },
   shield: { label: "SHIELD", icon: "🛡️", perLevel: "+1 shield charge/8lv", base: 500 },
 };

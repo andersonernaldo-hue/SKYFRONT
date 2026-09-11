@@ -114,7 +114,7 @@ export function defaultSave(): SaveData {
     crystals: 6,
     planes: ["falcon"],
     selected: "falcon",
-    upgrades: { damage: 0, health: 0, fireRate: 0, speed: 0, critical: 0, missiles: 0, shield: 0 },
+    upgrades: { damage: 0, health: 0, fireRate: 0, speed: 0, critical: 0, critDamage: 0, missiles: 0, shield: 0 },
     highScore: 0,
     galaxyProgress: 1,
     planetProgress: { "0_0": { maps: 0, stars: [], secret: false } },

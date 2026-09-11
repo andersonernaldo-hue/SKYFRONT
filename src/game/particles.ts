@@ -1,3 +1,5 @@
+import { glowSprite } from "./sprites";
+
 type Ctx = CanvasRenderingContext2D;
 
 export interface Particle {
@@ -137,13 +139,22 @@ export class ParticleSystem {
   }
 
   /** Floating damage number with slight scatter. */
+  /**
+   * Floating damage number. Deliberately small and brief: it must be readable
+   * at the edge of the eye without ever competing with the action. Crits are
+   * only marginally larger and amber-tinted, never screen-filling.
+   */
   damage(x: number, y: number, amount: number, crit: boolean) {
     this.spawn({
-      x: x + (Math.random() - 0.5) * 26, y: y - 8,
-      vx: (Math.random() - 0.5) * 90, vy: -125 - Math.random() * 55,
-      life: crit ? 0.6 : 0.46, size: crit ? 21 : 14,
-      color: crit ? "#ffd23d" : "#ffffff", kind: "dmg",
-      text: crit ? `${Math.round(amount)}!` : String(Math.round(amount)), drag: 0.93,
+      x: x + (Math.random() - 0.5) * 16, y: y - 6,
+      vx: (Math.random() - 0.5) * 46, vy: -78 - Math.random() * 26,
+      life: crit ? 0.46 : 0.34,
+      // Critical hits are 40% larger: distinct, but still compact in bullet hell.
+      size: crit ? 14 : 10,
+      color: crit ? "#ffcf5c" : "#dce9f5",
+      kind: "dmg",
+      text: crit ? `${Math.round(amount)}!` : String(Math.round(amount)),
+      drag: 0.92,
     });
   }
 
@@ -228,15 +239,19 @@ export class ParticleSystem {
         ctx.stroke();
       } else if (p.kind === "flash") {
         // budgeted: white core only on the brightest part of the life curve,
-        // and alpha falls off fast so overlapping blasts cannot saturate to pure white
+        // and alpha falls off fast so overlapping blasts cannot saturate to pure white.
+        // The radial falloff comes from a cached sprite (one gradient per colour,
+        // ever) instead of a new gradient per particle per frame.
         const r = Math.min(140, p.size * (1.6 - k));
-        const g = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, r);
-        g.addColorStop(0, k > 0.62 ? "#ffffff" : p.color);
-        g.addColorStop(0.42, p.color);
-        g.addColorStop(1, "rgba(0,0,0,0)");
         ctx.globalAlpha = k * k * 0.85 * ceiling;
-        ctx.fillStyle = g;
-        ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, 7); ctx.fill();
+        const spr = glowSprite(p.color);
+        if (spr) ctx.drawImage(spr, p.x - r, p.y - r, r * 2, r * 2);
+        else { ctx.fillStyle = p.color; ctx.beginPath(); ctx.arc(p.x, p.y, r * 0.6, 0, 7); ctx.fill(); }
+        if (k > 0.62) {
+          ctx.globalAlpha = (k - 0.62) * 2 * ceiling;
+          ctx.fillStyle = "#ffffff";
+          ctx.beginPath(); ctx.arc(p.x, p.y, r * 0.34, 0, 7); ctx.fill();
+        }
       } else if (p.kind === "shock") {
         const prog = 1 - k;
         const r = p.size * (0.25 + prog * 1.5);
@@ -260,10 +275,10 @@ export class ParticleSystem {
         ctx.globalCompositeOperation = "source-over";
         const pop = Math.min(1, (1 - k) * 5);
         ctx.globalAlpha = Math.min(1, k * 2.4);
-        ctx.font = `900 ${p.size * (0.7 + pop * 0.3)}px Orbitron, system-ui, sans-serif`;
+        ctx.font = `700 ${p.size * (0.86 + pop * 0.14)}px Rajdhani, system-ui, sans-serif`;
         ctx.textAlign = "center";
-        ctx.lineWidth = 3.5;
-        ctx.strokeStyle = "rgba(0,0,0,0.8)";
+        ctx.lineWidth = 2.4;
+        ctx.strokeStyle = "rgba(2,5,10,0.85)";
         ctx.strokeText(p.text || "", p.x, p.y);
         ctx.fillStyle = p.color;
         ctx.fillText(p.text || "", p.x, p.y);

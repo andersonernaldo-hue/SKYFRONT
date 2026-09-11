@@ -29,4 +29,8 @@ export const english: Record<string, string> = {
   "RESET WARNING": "This deletes the {profile} profile on this device: aircraft levels, sectors, credits, crystals and upgrades. It cannot be undone.",
   "IMPORT EXPLAINER": "Your Google account has no progress on this device yet. You can copy the guest progress or start fresh. The guest progress stays in its own profile.",
   "SIGN IN EXPLAINER": "Optional. Creates a separate profile under your Google name on this device. Do it whenever you like; your guest progress is untouched.",
+  "SYSTEM SUB": "10 sectors per planet \u00b7 secret boss at the level cap",
+  "MENU TAGLINE": "PLANETS \u00b7 SECTORS \u00b7 BOSSES",
+  "MENU LINE1": "Seven planets at war. Ten sectors each.",
+  "MENU LINE2": "A secret boss waiting at the end of every world.",
 };

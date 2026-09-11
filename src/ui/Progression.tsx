@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Btn, Panel, ScreenTitle } from "./common";
 import { GALAXIES, getMaps, findBoss, sectorBossFor, planetMaxLevel, sectorIdentity, type PlanetDef } from "../game/data/galaxies";
 import { canFightSecret, mapAccess, isPlanetUnlocked, planetState, aircraftLevel, sectorRequiredLevel, type SaveData } from "../game/save";
+import { planeXpForLevel } from "../game/progression";
 import { Audio } from "../game/audio";
 import type { RunConfig } from "../game/engine";
 import { useI18n } from "../i18n/react";
@@ -17,126 +18,95 @@ interface Props {
   playCinematic: (planet: PlanetDef, g: number, p: number) => void;
 }
 
-/* ============================ GALAXY MAP ============================ */
+/** All planets across both galaxies as one flat tab row (reference layout). */
+const FLAT: { g: number; p: number; def: PlanetDef }[] = GALAXIES.flatMap((gal, g) =>
+  gal.planets.map((def, p) => ({ g, p, def })));
+
+/* ============================ SOLAR SYSTEM ============================ */
 export function GalaxyMap({ save, back, launch, toast, set, playCinematic }: Props) {
-  const { t } = useI18n();
-  const [gi, setGi] = useState(0);
-  const [pi, setPi] = useState<number | null>(null);
-
-  if (pi !== null) {
-    return (
-      <PlanetMap
-        save={save} galaxy={gi} planet={pi}
-        back={() => setPi(null)}
-        launch={launch} toast={toast} set={set} playCinematic={playCinematic}
-      />
-    );
-  }
-
-  const gal = GALAXIES[gi];
-  const galUnlocked = gi < save.galaxyProgress;
+  const { t, n } = useI18n();
+  // default tab: the furthest planet the player can enter
+  const furthest = (() => {
+    let last = 0;
+    FLAT.forEach((item, i) => { if (isPlanetUnlocked(save, item.g, item.p)) last = i; });
+    return last;
+  })();
+  const [tab, setTab] = useState(furthest);
+  const sel = FLAT[Math.min(tab, FLAT.length - 1)];
+  const planeLevel = aircraftLevel(save);
+  const xp = save.planeData[save.selected]?.xp ?? 0;
+  const need = planeXpForLevel(planeLevel);
+  const cap = planetMaxLevel(sel.g, sel.p);
 
   return (
     <div className="absolute inset-0 overflow-y-auto no-scrollbar px-3.5 sm:px-6 py-4 z-10 screen-in">
-      <div className="max-w-[660px] mx-auto pb-10">
-        <ScreenTitle title="STAR CHART" sub="Galactic Campaign" onBack={back} />
+      <div className="max-w-[1020px] mx-auto pb-10">
+        <div className="flex items-start justify-between gap-2">
+          <ScreenTitle title="SOLAR SYSTEM" sub="SYSTEM SUB" onBack={back} />
+          <span className="px-chip mt-1" style={{ borderColor: "#a3781e", color: "#ffd23d" }}>◉ {n(save.coins)}</span>
+        </div>
 
-        {/* galaxy switcher */}
-        <div className="flex gap-2 mb-3">
-          {GALAXIES.map((g, i) => {
-            const unlocked = i < save.galaxyProgress;
+        {/* pilot bar */}
+        <div className="panel px-4 py-3 mb-4">
+          <div className="flex flex-wrap items-center justify-between gap-2 font-tech text-[9px]">
+            <span className="text-white">{save.planes.includes(save.selected) ? t("AIRCRAFT") : ""} {t("LEVEL")} <span className="text-cyan-300">{planeLevel}</span> / {t("CAP LV")} {cap}</span>
+            <span className="text-slate-400">{n(Math.floor(xp))} / {n(need)} EXP</span>
+          </div>
+          <div className="h-1.5 mt-2 bg-black/70 border border-white/10">
+            <div className="h-full" style={{ width: `${Math.min(100, (xp / need) * 100)}%`, background: "#2ee6ff", boxShadow: "0 0 8px #2ee6ff" }} />
+          </div>
+        </div>
+
+        {/* planet tabs */}
+        <div className="flex gap-2 overflow-x-auto no-scrollbar pb-1 mb-4">
+          {FLAT.map((item, i) => {
+            const unlocked = isPlanetUnlocked(save, item.g, item.p);
+            const st = planetState(save, item.g, item.p);
             return (
               <button
                 data-uibtn="1"
-                key={g.id}
-                onClick={() => { Audio.playSFX("click"); setGi(i); }}
-                className="flex-1 panel-soft px-3 py-2.5 rounded text-left transition-all cursor-pointer"
-                style={{
-                  borderColor: gi === i ? g.color : "rgba(255,255,255,0.12)",
-                  boxShadow: gi === i ? `0 0 18px ${g.color}44` : "none",
-                  opacity: unlocked ? 1 : 0.5,
-                }}
+                key={item.def.id}
+                disabled={!unlocked}
+                onClick={() => { Audio.playSFX("click"); setTab(i); }}
+                className={`planet-tab shrink-0 ${i === tab ? "active" : ""} ${unlocked ? "" : "locked"}`}
               >
-                <div className="font-tech text-[10px] tracking-widest" style={{ color: g.color }}>
-                  {t("GALAXY")} {g.id}
+                <div className="flex items-center gap-2">
+                  <span
+                    className="planet-orb"
+                    style={{ background: `radial-gradient(circle at 32% 28%, ${item.def.sky[2]}, ${item.def.sky[0]} 70%)`, boxShadow: i === tab ? `0 0 14px ${item.def.fog}` : "none" }}
+                    aria-hidden="true"
+                  />
+                  <div className="font-tech text-[10px] text-white flex items-center gap-1.5 min-w-0">
+                    <span className="truncate">{t(item.def.name)}</span> {!unlocked && <span aria-hidden="true">🔒</span>}
+                  </div>
                 </div>
-                <div className="font-tech text-sm font-black text-white">{g.name}</div>
-                <div className="text-[9px] text-slate-400">{t(unlocked ? g.subtitle : "LOCKED")}</div>
+                <div className="font-tech text-[8px] mt-1.5" style={{ color: i === tab ? "#ff9dc6" : "#66738f" }}>
+                  {t("CAP LV")} {planetMaxLevel(item.g, item.p)}
+                </div>
+                <div className="font-tech text-[8px] mt-1" style={{ color: st.secret ? "#ffd23d" : "#66738f" }}>
+                  {st.secret ? t("MASTERED") : `${st.maps}/10`}
+                </div>
+                <div className="tab-underline" />
               </button>
             );
           })}
         </div>
 
-        <Panel className="p-3 mb-3" >
-          <p className="text-xs text-slate-300 leading-relaxed">{t(gal.desc)}</p>
-          {!galUnlocked && (
-            <p className="text-[11px] text-amber-300 font-tech mt-1.5">
-              {t("Complete galaxy {galaxy} first", { galaxy: gal.id - 1 })}
-            </p>
-          )}
-        </Panel>
-
-        {/* planet nodes */}
-        <div className="grid gap-3 stagger">
-          {gal.planets.map((p, i) => {
-            const unlocked = isPlanetUnlocked(save, gi, i);
-            const st = planetState(save, gi, i);
-            const pct = (st.maps / 10) * 100;
-            return (
-              <Panel
-                key={p.id}
-                className={`p-3.5 flex items-center gap-3.5 transition-all ${unlocked ? "" : "opacity-55"}`}
-                
-              >
-                <div
-                  className="w-[68px] h-[68px] rounded-full flex items-center justify-center text-3xl shrink-0 border-2"
-                  style={{
-                    background: `radial-gradient(circle at 35% 30%, ${p.sky[2]}, ${p.sky[0]})`,
-                    borderColor: st.secret ? "#ffd23d" : unlocked ? "rgba(255,255,255,0.35)" : "rgba(255,255,255,0.12)",
-                    boxShadow: `0 0 22px ${p.fog}`,
-                  }}
-                >
-                  {p.emoji}
-                </div>
-
-                <div className="flex-1 min-w-0">
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <span className="font-tech text-base font-black text-white">{t(p.name)}</span>
-                    <span className="text-[9px] font-tech text-amber-300 border border-amber-400/60 px-1.5 rounded">{t("MAX LV")} {planetMaxLevel(gi, i)}</span>
-                    {st.secret && <span className="text-[9px] font-tech text-amber-300 border border-amber-400 px-1.5 rounded">{t("MASTERED")}</span>}
-                    {!st.secret && st.maps >= 10 && <span className="text-[9px] font-tech text-rose-300 border border-rose-400 px-1.5 rounded">{t("SECRET BOSS")}</span>}
-                  </div>
-                  <div className="text-[11px] text-slate-300 line-clamp-1">{t(p.desc)}</div>
-                  <div className="mt-1.5 flex items-center gap-2">
-                    <div className="flex-1 bar-track h-2 rounded-full overflow-hidden">
-                      <div className="h-full rounded-full" style={{ width: `${pct}%`, background: "linear-gradient(90deg,#2ee6ff,#fff)", boxShadow: "0 0 8px #2ee6ff" }} />
-                    </div>
-                    <span className="font-tech text-[10px] text-cyan-300 font-bold">{st.maps}/10</span>
-                  </div>
-                </div>
-
-                <Btn
-                  variant={unlocked ? "primary" : "default"}
-                  disabled={!unlocked}
-                  onClick={() => setPi(i)}
-                  className="!px-4 !py-3 !text-xs shrink-0"
-                >
-                  {unlocked ? "ENTER" : "🔒"}
-                </Btn>
-              </Panel>
-            );
-          })}
-        </div>
+        <PlanetBody
+          key={sel.def.id}
+          save={save} galaxy={sel.g} planet={sel.p}
+          launch={launch} toast={toast} set={set} playCinematic={playCinematic}
+        />
       </div>
     </div>
   );
 }
 
-/* ============================ PLANET / 10 MAPS ============================ */
-function PlanetMap({
-  save, galaxy, planet, back, launch, toast, set, playCinematic,
+/* ============================ PLANET BODY (banner + sectors + secret) ============================ */
+function PlanetBody({
+  save, galaxy, planet, launch, toast, set, playCinematic,
 }: {
-  save: SaveData; galaxy: number; planet: number; back: () => void;
+  save: SaveData; galaxy: number; planet: number;
   launch: (c: RunConfig) => void; toast: (m: string, k?: string) => void;
   set: (fn: (s: SaveData) => SaveData) => void;
   playCinematic: (p: PlanetDef, g: number, pi: number) => void;
@@ -148,7 +118,6 @@ function PlanetMap({
   const secretGate = canFightSecret(save, galaxy, planet);
   const boss = findBoss(p.secretBoss);
   const planeLevel = aircraftLevel(save);
-
   const canPay = save.coins >= p.secretFee.coins && save.crystals >= p.secretFee.crystals;
 
   const payAndFight = () => {
@@ -159,161 +128,143 @@ function PlanetMap({
   };
 
   return (
-    <div className="absolute inset-0 overflow-y-auto no-scrollbar px-3.5 sm:px-6 py-4 z-10 screen-in">
-      <div className="max-w-[660px] mx-auto pb-10">
-        <ScreenTitle title={p.name} sub={`${GALAXIES[galaxy].name} / ${t("SECTOR GRID")}`} onBack={back} />
-
-        <Panel className="p-3 mb-3 flex items-center gap-3">
-          <div
-            className="w-14 h-14 rounded-full flex items-center justify-center text-2xl shrink-0"
-            style={{ background: `radial-gradient(circle at 35% 30%, ${p.sky[2]}, ${p.sky[0]})`, boxShadow: `0 0 20px ${p.fog}` }}
-          >
-            {p.emoji}
-          </div>
-          <div className="flex-1">
-            <p className="text-xs text-slate-300">{t(p.desc)}</p>
-            <p className="text-[10px] font-tech text-cyan-300 mt-1">
-              {t("SECTORS CLEARED")} {st.maps}/10
-            </p>
-            <div className="mt-1.5 flex items-center gap-2">
-              <span className="font-tech text-[9px] text-amber-300 whitespace-nowrap">
-                {t("AIRCRAFT")} {t("LV")} {planeLevel}/{planetMaxLevel(galaxy, planet)}
-              </span>
-              <div className="flex-1 bar-track h-2 rounded-full overflow-hidden">
-                <div
-                  className="h-full rounded-full"
-                  style={{ width: `${Math.min(100, (planeLevel / planetMaxLevel(galaxy, planet)) * 100)}%`, background: "linear-gradient(90deg,#ffb020,#fff)", boxShadow: "0 0 8px #ffb020" }}
-                />
-              </div>
-              <span className="font-tech text-[9px] text-slate-400">{t("MAX LV")} {planetMaxLevel(galaxy, planet)}</span>
-            </div>
-          </div>
-        </Panel>
-
-        <div className="mb-4">
-          <p className="text-sm text-slate-300 leading-relaxed mb-3">{t("PROGRESSION RULE")}</p>
-          <DifficultySelector value={save.settings.difficulty} onChange={(difficulty) => set((s) => ({ ...s, settings: { ...s.settings, difficulty } }))} />
+    <>
+      {/* planet banner */}
+      <div
+        className="relative overflow-hidden border border-white/10 p-4 flex items-center gap-4 mb-4"
+        style={{ background: `linear-gradient(105deg, ${p.sky[0]}dd 0%, #3d0a3f99 55%, #0a0f1d 100%)` }}
+      >
+        <div
+          className="w-16 h-16 shrink-0 border border-white/25 flex items-center justify-center text-3xl"
+          style={{ background: `radial-gradient(circle at 35% 30%, ${p.sky[2]}, ${p.sky[0]})`, boxShadow: `0 0 24px ${p.fog}` }}
+        >
+          {p.emoji}
         </div>
+        <div className="min-w-0">
+          <h3 className="font-tech text-xl sm:text-2xl font-black uppercase" style={{ textShadow: "0 0 18px rgba(46,230,255,0.4)" }}>
+            {t(p.name)}
+          </h3>
+          <p className="text-xs text-slate-200/90 mt-1 line-clamp-1">{t(p.desc)}</p>
+          <div className="flex flex-wrap gap-2 mt-2">
+            <span className="px-chip !py-1 !text-[8px]" style={{ borderColor: "#ff5ba866", color: "#ff9dc6" }}>
+              {t("SECTORS")} {st.maps}/10
+            </span>
+            <span className="px-chip !py-1 !text-[8px]" style={{ borderColor: "#ffb02055", color: "#ffd76a" }}>
+              {t("LV")} {planeLevel}/{planetMaxLevel(galaxy, planet)}
+            </span>
+          </div>
+        </div>
+      </div>
 
-        {/* 10 map nodes */}
-        <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 stagger">
-          {maps.map((m, i) => {
-            const access = mapAccess(save, galaxy, planet, i);
-            const unlocked = access.ok;
-            const cleared = i < st.maps;
-            const stars = st.stars?.[i] || 0;
-            const warlord = findBoss(sectorBossFor(galaxy, planet, i));
-            const ident = sectorIdentity(i);
-            const required = sectorRequiredLevel(galaxy, planet, i);
-            const reward = scaleReward(sectorContract(galaxy, planet, i), save.settings.difficulty);
-            return (
-              <button
-                data-uibtn="1"
-                key={i}
-                disabled={!unlocked}
-                title={access.reason || `${t("SECTOR REWARD")}: ${n(reward.coins)} ${t("CREDITS")} / ${n(reward.xp)} XP`}
-                aria-label={`${t("SECTOR")} ${i + 1}, ${t("AIRCRAFT")} ${t("LV")} ${required}. ${access.reason}`}
-                onClick={() => { Audio.playSFX("click"); launch({ mode: "campaign", galaxy, planet, map: i }); }}
-                className="panel-soft p-2 rounded flex flex-col items-center text-center transition-all cursor-pointer disabled:cursor-not-allowed"
-                style={{
-                  borderColor: cleared ? "rgba(16,240,160,0.5)" : unlocked ? "rgba(46,230,255,0.55)" : "rgba(255,255,255,0.1)",
-                  opacity: unlocked ? 1 : 0.45,
-                  boxShadow: unlocked && !cleared ? "0 0 14px rgba(46,230,255,0.25)" : "none",
-                }}
-              >
-                <div className="flex items-center gap-1">
-                    <span className="font-tech text-[10px] text-slate-400">{t("SECTOR")}</span>
-                  <span className="font-tech text-sm font-black text-white">{String(i + 1).padStart(2, "0")}</span>
+      <div className="mb-4">
+        <p className="text-sm text-slate-300 leading-relaxed mb-3">{t("PROGRESSION RULE")}</p>
+        <DifficultySelector value={save.settings.difficulty} onChange={(difficulty) => set((s) => ({ ...s, settings: { ...s.settings, difficulty } }))} />
+      </div>
+
+      {/* sector grid */}
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 stagger">
+        {maps.map((m, i) => {
+          const access = mapAccess(save, galaxy, planet, i);
+          const unlocked = access.ok;
+          const cleared = i < st.maps;
+          const stars = st.stars?.[i] || 0;
+          const warlord = findBoss(sectorBossFor(galaxy, planet, i));
+          const ident = sectorIdentity(i);
+          const required = sectorRequiredLevel(galaxy, planet, i);
+          const reward = scaleReward(sectorContract(galaxy, planet, i), save.settings.difficulty);
+          return (
+            <button
+              data-uibtn="1"
+              key={i}
+              disabled={!unlocked}
+              title={access.reason || `${t("SECTOR REWARD")}: ${n(reward.coins)} ${t("CREDITS")} / ${n(reward.xp)} XP`}
+              aria-label={`${t("SECTOR")} ${i + 1}, ${t("AIRCRAFT")} ${t("LV")} ${required}. ${access.reason}`}
+              onClick={() => { Audio.playSFX("click"); launch({ mode: "campaign", galaxy, planet, map: i }); }}
+              className={`sector-card relative panel-soft text-left cursor-pointer disabled:cursor-not-allowed flex flex-col ${cleared ? "is-cleared" : unlocked ? "is-next" : "is-locked"}`}
+              style={{ ["--sc" as any]: cleared ? "#10f0a0" : unlocked ? "#2ee6ff" : "#334155" }}
+            >
+              <span className="sector-stripe" aria-hidden="true" />
+              <div className="p-2.5 flex-1">
+                <div className="flex items-start justify-between gap-1">
+                  <span className="font-tech text-[8px] text-slate-500">S{i + 1}</span>
+                  {!unlocked && <span className="text-xs" aria-hidden="true">🔒</span>}
                 </div>
-                <div className="text-[9px] font-tech text-cyan-200 leading-tight mt-1 min-h-[32px] flex items-center">
+                <div className="font-tech text-[10px] text-cyan-100 leading-relaxed mt-1 min-h-[34px]">
                   {t(m.name)}
                 </div>
-                <div className="text-[9px] font-tech mt-0.5" style={{ color: "#7ff0ff" }}>
-                  {ident.icon} {t(ident.label)}
+                <div className="font-tech text-[8px] leading-relaxed mt-1 min-h-[24px] flex items-start gap-1" style={{ color: "#ff5b6e" }}>
+                  <span aria-hidden="true" className="opacity-80">☠</span><span>{warlord.name}</span>
                 </div>
-                <div className="text-[8px] text-slate-400">
-                  {m.waves} {t("WAVES")} + {t("BOSS")}
-                </div>
-                <div className="text-[8px] font-tech text-rose-300 leading-tight mt-1 min-h-[25px] flex items-center justify-center">
-                  {warlord.name}
+                <div className="flex items-center justify-between mt-1.5">
+                  <span className="font-tech text-[10px]" title={t(ident.label)}>{ident.icon}</span>
+                  <span className="text-[10px] tracking-tight" style={{ color: cleared ? "#ffd23d" : "#3a4666" }}>
+                    {"★".repeat(Math.max(cleared ? 1 : 0, stars))}{"☆".repeat(Math.max(0, 3 - Math.max(cleared ? 1 : 0, stars)))}
+                  </span>
                 </div>
                 {m.event !== "none" && (
-                  <div className="text-[8px] font-tech text-amber-300 mt-0.5">
-                    {t(m.event.toUpperCase())}
-                  </div>
+                  <span className="inline-block mt-2 px-2 py-1 font-tech text-[8px] border rounded-sm" style={{ borderColor: "#2ee6ff44", color: "#7fe6ff", background: "#07131f" }}>
+                    ⚠ {t(m.event.toUpperCase())}
+                  </span>
                 )}
-                <div className="mt-1 text-[9px]">
-                  {cleared ? (
-                    <span className="text-amber-300">{"★".repeat(Math.max(1, stars))}{"☆".repeat(Math.max(0, 3 - Math.max(1, stars)))}</span>
-                  ) : unlocked ? (
-                    <span className="text-cyan-300 font-tech">{t("READY")}</span>
-                  ) : (
-                    <span className="text-slate-500">🔒</span>
-                  )}
-                </div>
-                <div className={`sector-level w-full mt-2 ${planeLevel < required ? "is-locked" : ""}`}>
-                  {t("AIRCRAFT")} {t("LV")} {required}
-                </div>
-                <div className="text-[10px] text-slate-400 mt-1">◉ {n(reward.coins)} / +{n(reward.xp)} XP</div>
-              </button>
-            );
-          })}
-        </div>
-        <p className="text-xs text-slate-400 leading-relaxed mt-3">{t("FIRST CLEAR NOTE")}</p>
-
-        {/* SECRET BOSS NODE */}
-        <Panel
-          className="p-4 mt-4 relative overflow-hidden"
-          
-        >
-          <div className="absolute inset-0 grid-bg opacity-20" />
-          <div
-            className="absolute inset-0 pointer-events-none"
-            style={{ background: `radial-gradient(circle at 50% 0%, ${st.secret ? "rgba(255,210,60,0.16)" : "rgba(181,103,255,0.18)"}, transparent 70%)` }}
-          />
-          <div className="relative flex items-start gap-3">
-            <div className="text-4xl">{st.secret ? "🏆" : "☠️"}</div>
-            <div className="flex-1">
-              <div className="font-tech text-lg font-black text-white tracking-wide">
-                {t("SECRET BOSS")} / {boss.name}
               </div>
-              <div className="text-[11px] text-purple-200 italic">{t(boss.title)}</div>
-              <div className="text-[11px] text-slate-300 mt-1.5 leading-relaxed">
-                {t("SECRET RULE")}
+              <div className={`sector-level w-full flex items-center justify-between font-tech ${planeLevel < required ? "is-locked" : ""}`}>
+                <span className="text-[8px]">{unlocked ? (cleared ? t("REPLAY") : t("READY")) : `${t("LEVEL")} ${required}`}</span>
+                <span className="text-[8px] text-slate-500">+{n(reward.xp)} XP</span>
               </div>
-
-              <div className="grid grid-cols-3 gap-2 mt-2.5 text-center">
-                <Req ok={st.maps >= 10} label="10 SECTORS" value={`${st.maps}/10`} />
-                <Req ok={planeLevel >= planetMaxLevel(galaxy, planet)} label="AIRCRAFT LEVEL" value={`${planeLevel}/${planetMaxLevel(galaxy, planet)}`} />
-                <Req ok={canPay} label="ENTRY FEE" value={`${n(p.secretFee.coins)} / ${n(p.secretFee.crystals)}`} />
-              </div>
-
-              {st.secret && <p className="text-xs text-amber-300 mt-3">{t("ALREADY DEFEATED")}</p>}
-              <Btn variant="danger" className="mt-3 !px-4 !py-3 !text-xs" disabled={!secretGate.ok || !canPay} onClick={payAndFight}>
-                {t(st.secret ? "REMATCH" : "CHALLENGE SECRET BOSS")}
-              </Btn>
-              {!secretGate.ok && <p className="text-xs text-amber-200 mt-2">{secretGate.reason}</p>}
-              <p className="text-xs text-slate-400 mt-2">{t("ENTRY PER ATTEMPT")}</p>
-            </div>
-          </div>
-        </Panel>
-        <Btn className="mt-4 !text-xs" onClick={() => playCinematic(p, galaxy, planet)}>{t("CINEMATICS")}</Btn>
+            </button>
+          );
+        })}
       </div>
-    </div>
+      <p className="text-xs text-slate-400 leading-relaxed mt-3">{t("FIRST CLEAR NOTE")}</p>
+
+      {/* SECRET BOSS — left info, right checklist (reference layout) */}
+      <Panel className={`p-4 mt-5 relative overflow-hidden secret-panel ${st.secret ? "is-done" : ""}`}>
+        <div className="absolute inset-0 grid-bg opacity-15" />
+        <div className="secret-scan" aria-hidden="true" />
+        <div
+          className="absolute inset-0 pointer-events-none"
+          style={{ background: `radial-gradient(circle at 0% 0%, ${st.secret ? "rgba(255,210,60,0.12)" : "rgba(255,45,90,0.10)"}, transparent 60%)` }}
+        />
+        <div className="relative grid sm:grid-cols-[1fr_auto] gap-4">
+          <div className="min-w-0">
+            <div className="flex items-center gap-2 font-tech text-[9px] tracking-[0.22em]" style={{ color: "#ff5b6e" }}>
+              <span className="text-lg leading-none" aria-hidden="true">{st.secret ? "🏆" : "💀"}</span> {t("SECRET BOSS")}
+            </div>
+            <h3 className="font-tech text-lg sm:text-xl font-black uppercase mt-1.5" style={{ color: "#ff5b6e", textShadow: "0 0 16px rgba(255,45,90,0.4)" }}>
+              {boss.name}
+            </h3>
+            <p className="text-xs text-slate-300 mt-1 italic">{t(boss.title)}</p>
+            <p className="text-xs text-slate-400 mt-2.5 leading-relaxed">{t("SECRET RULE")}</p>
+            {st.secret && <p className="font-tech text-[8px] text-amber-300 mt-2.5">✔ {t("ALREADY DEFEATED")}</p>}
+          </div>
+          <div className="sm:w-[260px] flex flex-col gap-1.5 sm:items-end">
+            <Req ok={st.maps >= 10} text={`${t("10 SECTORS")} (${st.maps}/10)`} />
+            <Req ok={planeLevel >= planetMaxLevel(galaxy, planet)} text={`${t("AIRCRAFT LEVEL")} ${planeLevel}/${planetMaxLevel(galaxy, planet)}`} />
+            <Req ok={canPay} text={`${t("ENTRY FEE")} ◉${n(p.secretFee.coins)} ◆${n(p.secretFee.crystals)}`} />
+            <button
+              data-uibtn="1"
+              disabled={!secretGate.ok || !canPay}
+              onClick={payAndFight}
+              className="hex-btn danger w-full sm:w-auto mt-2 px-6 py-4 !text-[11px]"
+              style={secretGate.ok && canPay ? { borderColor: "#ffd23d", color: "#ffd76a", background: "#1c1203" } : undefined}
+            >
+              ▶ {t(st.secret ? "REMATCH" : "CHALLENGE")} (◉{n(p.secretFee.coins)})
+            </button>
+            {!secretGate.ok && <p className="text-[11px] text-amber-200 sm:text-right">{secretGate.reason}</p>}
+            <p className="text-[10px] text-slate-500 sm:text-right">{t("ENTRY PER ATTEMPT")}</p>
+          </div>
+        </div>
+      </Panel>
+
+      <Btn className="mt-4 !text-[9px] !py-2.5" onClick={() => playCinematic(p, galaxy, planet)}>{t("CINEMATICS")}</Btn>
+    </>
   );
 }
 
-function Req({ ok, label, value }: { ok: boolean; label: string; value: string }) {
-  const { t } = useI18n();
+function Req({ ok, text }: { ok: boolean; text: string }) {
   return (
-    <div
-      className="panel-soft py-1.5 px-1 rounded"
-      style={{ borderColor: ok ? "rgba(16,240,160,0.55)" : "rgba(255,80,100,0.45)" }}
-    >
-      <div className="font-tech text-[10px] font-bold" style={{ color: ok ? "#10f0a0" : "#ff7a90" }}>
-        {ok ? "✔" : "✖"} {value}
-      </div>
-      <div className="text-[8px] tracking-widest text-slate-400">{t(label)}</div>
+    <div className="flex items-center gap-2 font-tech text-[9px]" style={{ color: ok ? "#10f0a0" : "#8b96ad" }}>
+      <span aria-hidden="true" className="text-[10px]">{ok ? "●" : "○"}</span> {text}
     </div>
   );
 }
@@ -356,7 +307,6 @@ export function Cinematic({
       <div className="absolute inset-0 grid-bg opacity-25" />
       <div className="absolute inset-0 scanlines" />
 
-      {/* travelling stars */}
       <div className="absolute inset-0 overflow-hidden">
         {Array.from({ length: 60 }).map((_, i) => (
           <span
@@ -386,12 +336,12 @@ export function Cinematic({
 
       <div className="relative mt-6 text-center px-6">
         <div className="font-tech text-[10px] tracking-[0.5em] text-cyan-300">{galaxyName}</div>
-        <h2 className="font-tech text-3xl sm:text-4xl font-black text-white glow-text mt-1">{t(planet.name)}</h2>
-        <div className="mt-4 space-y-1 h-24">
+        <h2 className="font-display text-3xl sm:text-4xl text-white glow-text mt-2 uppercase">{t(planet.name)}</h2>
+        <div className="mt-4 space-y-2 h-24">
           {lines.map((l, i) => (
             <div
               key={i}
-              className="font-tech text-xs sm:text-sm text-slate-200 transition-all duration-500"
+              className="font-tech text-[10px] sm:text-xs text-slate-200 transition-all duration-500"
               style={{ opacity: step > i ? 1 : 0, transform: step > i ? "none" : "translateY(10px)" }}
             >
               {t(l)}

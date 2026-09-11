@@ -112,13 +112,15 @@ export function PlaneCanvas({ plane, size = 220, spin = false }: { plane: PlaneD
   return <canvas ref={ref} style={{ width: size, height: size }} className="pointer-events-none" />;
 }
 
-export function StatRow({ label, value, max, color }: { label: string; value: number; max: number; color: string }) {
+export function StatRow({ label, value, max, color, suffix = "" }: {
+  label: string; value: number; max: number; color: string; suffix?: string;
+}) {
   const { t } = useI18n();
   return (
     <div className="flex items-center gap-2">
       <span className="w-24 shrink-0 text-[10px] font-tech opacity-70">{t(label)}</span>
       <Bar value={value} max={max} color={color} height={8} />
-      <span className="w-9 text-right text-[11px] font-tech">{Math.round(value)}</span>
+      <span className="w-12 text-right text-[10px] font-tech">{Math.round(value)}{suffix}</span>
     </div>
   );
 }
@@ -129,8 +131,8 @@ export function ScreenTitle({ title, sub, onBack }: { title: string; sub?: strin
     <div className="flex items-center gap-3 mb-3">
       <Btn onClick={onBack} className="!px-3 !py-2">◀</Btn>
       <div>
-        <h2 className="font-tech text-lg sm:text-xl md:text-2xl font-black glow-text">{t(title)}</h2>
-        {sub && <p className="text-[11px] uppercase tracking-widest opacity-60">{t(sub)}</p>}
+        <h2 className="font-display text-xl sm:text-2xl md:text-3xl uppercase text-white glow-text">{t(title)}</h2>
+        {sub && <p className="font-tech text-[8px] uppercase tracking-widest mt-1" style={{ color: "#2ee6ff" }}>{t(sub)}</p>}
       </div>
     </div>
   );

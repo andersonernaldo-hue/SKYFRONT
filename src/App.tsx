@@ -96,6 +96,7 @@ export default function App() {
   }, [later]);
 
   useEffect(() => { document.documentElement.lang = save.settings.language; }, [save.settings.language]);
+  useEffect(() => { document.documentElement.dataset.quality = save.settings.quality; }, [save.settings.quality]);
   useEffect(() => {
     const coarse = window.matchMedia("(pointer: coarse)").matches;
     setTouch(coarse);
@@ -318,16 +319,20 @@ export default function App() {
           {screen === "settings" && <Settings save={save} set={setSave} back={() => go("menu")} toast={toast}
             onReset={resetProgress} />}
 
-          {banner && inGame && !overlay && <div key={banner.id} className="absolute top-[28%] left-0 right-0 flex flex-col items-center pointer-events-none rise z-30 px-4 text-center">
-            <div className="font-tech text-2xl sm:text-4xl font-black" style={{ color: banner.color, textShadow: `0 0 18px ${banner.color}` }}>{banner.text}</div>
-            <div className="font-tech text-[10px] tracking-widest text-slate-200 mt-1">{banner.sub}</div>
+          {banner && inGame && !overlay && <div key={banner.id} className="game-banner" style={{ ["--bc" as any]: banner.color }}>
+            <div className="game-banner-rule" />
+            <div className="game-banner-text font-tech">{banner.text}</div>
+            <div className="game-banner-sub font-tech">{banner.sub}</div>
+            <div className="game-banner-rule is-bottom" />
           </div>}
           {cine && <Cinematic planet={cine.planet} galaxyName={cine.galaxyName} secret={cine.secret}
             onDone={() => { const action = cine.then; setCine(null); if (action) action(); else Audio.playMusic("MENU", true); }} />}
 
           {overlay === "pause" && <div className="absolute inset-0 bg-black/75 backdrop-blur-sm flex items-center justify-center px-5 z-40">
             <Panel className="p-6 w-full max-w-[400px] rise">
-              <h2 className="font-tech text-2xl font-black text-center mb-4">{t("PAUSED")}</h2>
+              <div className="pause-bars" aria-hidden="true"><span /><span /></div>
+              <h2 className="font-tech text-2xl font-black text-center mb-1 glow-text tracking-[0.3em]">{t("PAUSED")}</h2>
+              <div className="section-rule justify-center mb-4"><span /></div>
               <div className="mb-4"><LanguageSelect /></div>
               <div className="grid grid-cols-2 gap-2 text-center mb-4">
                 <Info label="SCORE" value={n.format(hud.score)} /><Info label="KILLS" value={n.format(hud.kills)} />
@@ -362,14 +367,32 @@ export default function App() {
             notice={storageAvailable() ? undefined : t("Save unavailable")} />}
 
           <div className="absolute top-3 left-1/2 -translate-x-1/2 w-max max-w-[94%] flex flex-col items-center gap-1 pointer-events-none z-[80]" aria-live="polite">
-            {toasts.map((item) => <div key={item.id} className="panel-soft px-4 py-2 text-xs rise rounded text-center"
-              style={{ borderColor: item.kind === "good" ? "#10f0a0" : item.kind === "bad" ? "#ff3355" : "#2ee6ff" }}>{item.msg}</div>)}
+            {toasts.map((item) => <div key={item.id} className={`toast toast-${item.kind} rise`}>
+              <span className="toast-icon" aria-hidden="true">{item.kind === "good" ? "✔" : item.kind === "bad" ? "✖" : "ℹ"}</span>
+              <span>{item.msg}</span>
+            </div>)}
           </div>
           {saveError && !inGame && <p role="status" className="absolute bottom-1 left-3 right-3 text-xs text-amber-200 bg-black/90 p-2 z-50">{t("Save unavailable")}</p>}
         </div>
       </div>
     </LanguageProvider>
   );
+}
+
+/** Animates a number from 0 to `target` with an ease-out curve. */
+function useCountUp(target: number, ms = 1100) {
+  const [value, setValue] = useState(0);
+  useEffect(() => {
+    let raf = 0; const t0 = performance.now();
+    const tick = (now: number) => {
+      const k = Math.min(1, (now - t0) / ms);
+      setValue(Math.round(target * (1 - Math.pow(1 - k, 3))));
+      if (k < 1) raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [target, ms]);
+  return value;
 }
 
 function Results({ result, save, levelGain, onRetry, onNext, onMenu, onSectors }: {
@@ -379,24 +402,38 @@ function Results({ result, save, levelGain, onRetry, onNext, onMenu, onSectors }
   const { t, n } = useI18n();
   const planet = getPlanet(result.galaxy, result.planet);
   const next = result.map < 9 ? mapAccess(save, result.galaxy, result.planet, result.map + 1) : null;
+  const shownScore = useCountUp(result.score);
+  const shownCoins = useCountUp(result.coins, 900);
+  const shownXp = useCountUp(result.planeXp, 900);
+  const leveled = levelGain.after > levelGain.before;
   const sections = [["COMBAT LOOT", result.rewards.combat], ["COMPLETION REWARD", result.rewards.completion],
     ["FIRST CLEAR BONUS", result.rewards.firstClear], ["DAILY BONUS", result.rewards.daily]] as const;
   return (
-    <div className="absolute inset-0 bg-black/85 backdrop-blur-sm overflow-y-auto no-scrollbar z-40 p-4">
+    <div className={`absolute inset-0 overflow-y-auto no-scrollbar z-40 p-4 results-screen ${result.victory ? "is-victory" : "is-defeat"}`}>
+      <div className="results-beam" aria-hidden="true" />
       <Panel className="p-5 sm:p-6 w-full max-w-[470px] mx-auto my-5 rise">
-        <h2 className={`font-tech text-2xl font-black text-center ${result.victory ? "text-amber-300" : "text-rose-400"}`}>
+        <div className="text-center font-tech text-[9px] tracking-[0.35em] text-slate-400 mb-1">{t(result.victory ? "MISSION REPORT" : "MISSION REPORT")}</div>
+        <h2 className={`results-title font-tech text-2xl sm:text-3xl font-black text-center ${result.victory ? "text-amber-300 glow-text-gold" : "text-rose-400 glow-text-red"}`}>
           {t(result.victory ? result.mode === "secret" ? "SECRET BOSS SLAIN" : "MISSION COMPLETE" : "AIRCRAFT DOWN")}
         </h2>
         <p className="text-center text-xs text-slate-400 mt-2 mb-4">{t(planet.name)} / {t("SECTOR")} {result.map + 1} / {t(result.difficulty)}</p>
-        {result.mode === "daily" && <p className="text-center text-amber-300 text-2xl mb-3">{"★".repeat(result.stars)}{"☆".repeat(3 - result.stars)}</p>}
-        <div className="text-center pop mb-4"><div className="font-tech text-[10px] text-slate-400">{t("FINAL SCORE")}</div>
-          <div className="font-tech text-4xl font-black text-white">{n(result.score)}</div></div>
+        {result.mode === "daily" && (
+          <p className="text-center text-3xl mb-3 flex justify-center gap-1">
+            {[0, 1, 2].map((i) => (
+              <span key={i} className={i < result.stars ? "star-pop" : ""} style={{ color: i < result.stars ? "#ffd23d" : "rgba(255,255,255,0.18)", animationDelay: `${0.35 + i * 0.18}s` }}>★</span>
+            ))}
+          </p>
+        )}
+        <div className="text-center pop mb-4">
+          <div className="font-tech text-[10px] tracking-[0.3em] text-slate-400">{t("FINAL SCORE")}</div>
+          <div className="font-tech text-4xl sm:text-5xl font-black text-white glow-text tabular-nums leading-none mt-1">{n(shownScore)}</div>
+        </div>
         {result.score >= save.highScore && result.score > 0 && <p className="text-xs text-cyan-300 text-center mb-3">{t("NEW HIGH SCORE")}</p>}
         <div className="section-rule mb-2">{t("Rewards")}</div>
         <div className="grid grid-cols-3 gap-2 text-center stagger">
-          <Reward label="CREDITS" value={`+${n(result.coins)}`} color="#ffb020" />
+          <Reward label="CREDITS" value={`+${n(shownCoins)}`} color="#ffb020" />
           <Reward label="CRYSTALS" value={`+${n(result.crystals)}`} color="#2ee6ff" />
-          <Reward label="AIRFRAME XP" value={`+${n(result.planeXp)}`} color="#10f0a0" />
+          <Reward label="AIRFRAME XP" value={`+${n(shownXp)}`} color="#10f0a0" />
         </div>
         <p className="text-xs text-slate-400 mt-2">{t("DIFFICULTY BONUS")}: {t(result.difficulty)} / {n(result.rewards.coinMultiplier)}x {t("CREDITS")} / {n(result.rewards.xpMultiplier)}x XP</p>
         <details className="reward-breakdown mt-3">
@@ -405,7 +442,8 @@ function Results({ result, save, levelGain, onRetry, onNext, onMenu, onSectors }
             <span>{t(label)}</span><span className="text-right tabular-nums">{n(amount.coins)} {t("CREDITS")}<br />{n(amount.crystals)} {t("CRYSTALS")} / {n(amount.xp)} XP</span>
           </div>)}
         </details>
-        <div className="airframe-result mt-4">
+        <div className={`airframe-result mt-4 ${leveled ? "is-levelup" : ""}`}>
+          {leveled && <div className="font-tech text-[9px] tracking-[0.3em] text-amber-300 mb-1 levelup-tag">▲ {t("AIRCRAFT LEVEL UP")}</div>}
           <strong className="text-cyan-200">{t("{name}: level {before} to {after}", { name: getPlane(result.planeId).name, before: levelGain.before, after: levelGain.after })}</strong>
           <p className="text-xs text-slate-400 mt-1">{t("AIRCRAFT XP NOTE")}</p>
           {aircraftLevel(save, result.planeId) >= levelCap(save) && <p className="text-amber-300 text-xs mt-1">{t("LEVEL CAP REACHED")}: {levelCap(save)}</p>}
@@ -443,11 +481,12 @@ function Info({ label, value }: { label: string; value: string }) {
   return <div className="py-2"><div className="font-tech text-sm text-cyan-200 font-bold">{value}</div><div className="text-[9px] text-slate-400">{t(label)}</div></div>;
 }
 function MenuBackdrop() {
-  return <div className="absolute inset-0 overflow-hidden">
-    <div className="absolute inset-0" style={{ background: "radial-gradient(120% 80% at 50% 0%, #123b63 0%, #0a1428 45%, #03060f 100%)" }} />
-    <div className="absolute inset-0 grid-bg opacity-40" />
-    <div className="absolute -top-20 -left-24 w-80 h-80 rounded-full blur-3xl opacity-30" style={{ background: "#2ee6ff" }} />
-    <div className="absolute bottom-0 -right-24 w-96 h-96 rounded-full blur-3xl opacity-25" style={{ background: "#b567ff" }} />
+  return <div className="space-bg" aria-hidden="true">
+    <div className="absolute inset-0 grid-bg opacity-30" />
+    <div className="nebula" style={{ width: 520, height: 520, top: -160, left: -180, background: "#1d6fb8" }} />
+    <div className="nebula" style={{ width: 620, height: 620, bottom: -220, right: -200, background: "#6b1fb0", animationDelay: "-7s" }} />
+    <div className="nebula" style={{ width: 380, height: 380, top: "40%", left: "55%", background: "#ff2d6f", opacity: 0.14, animationDelay: "-12s" }} />
+    <div className="scan-beam" />
     <div className="absolute inset-0 scanlines" />
   </div>;
 }

@@ -464,4 +464,20 @@ test("Language and account choice persist independently of progress", () => {
   assert.equal(save.loadGame().settings.language, "pt");
 });
 
+test("Menu options are balanced and critical damage is upgradeable", () => {
+  const { MainMenu } = require("../src/ui/Menu.tsx");
+  const planes = require("../src/game/data/planes.ts");
+  const s = save.defaultSave();
+  const markup = renderToStaticMarkup(React.createElement(LanguageProvider, { language: "es", onChange: () => {} },
+    React.createElement(MainMenu, { save: s, go: () => {}, onPlay: () => {} })));
+  assert.equal((markup.match(/<button[^>]+menu-option/g) || []).length, 8, "all 8 destinations share the same grid cell");
+  assert.ok(markup.includes(">JUGAR<"));
+  assert.ok(!markup.includes("ELEGIR SECTOR"));
+  assert.ok(planes.UPGRADE_KEYS.includes("critDamage"));
+  assert.equal(s.upgrades.critDamage, 0);
+  const particleSource = fs.readFileSync(path.join(root, "src/game/particles.ts"), "utf8");
+  assert.match(particleSource, /size: crit \? 14 : 10/);
+  assert.match(particleSource, /crit \? `\$\{Math\.round\(amount\)\}!`/);
+});
+
 console.log(`\n${checks} checks passed. TypeScript checked. No browser/GPU performance claims are made by this suite.`);

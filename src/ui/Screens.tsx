@@ -44,15 +44,19 @@ export function Hangar({ save, set, back, toast }: Props) {
         <ScreenTitle title="FLIGHT HANGAR" sub="Advanced Tactical Fighters" onBack={back} />
 
         {/* 3D Showcase Deck */}
-        <Panel className="p-4 sm:p-5 flex flex-col items-center relative overflow-hidden border-cyan-400/40">
-          <div className="absolute inset-0 grid-bg opacity-30" />
-          <div
-            className="absolute inset-x-0 bottom-0 h-32 pointer-events-none"
-            style={{ background: `linear-gradient(to top, ${rc.glow}, transparent)` }}
-          />
+        <Panel className="p-4 sm:p-5 flex flex-col items-center relative overflow-hidden" style={{ borderColor: `${rc.main}55` }}>
+          <div className="absolute inset-0 grid-bg opacity-25" />
+          {/* rarity aura + rotating showcase rings */}
+          <div className="showcase-aura" style={{ ["--rc" as any]: rc.main }} />
+          <div className="showcase-ring" style={{ ["--rc" as any]: rc.main }} />
+          <div className="showcase-ring showcase-ring-2" style={{ ["--rc" as any]: rc.main }} />
 
           <div className="relative animate-floaty">
             <PlaneCanvas plane={plane} size={250} spin />
+            {/* floor reflection */}
+            <div className="showcase-reflection" aria-hidden="true">
+              <PlaneCanvas plane={plane} size={250} spin />
+            </div>
           </div>
 
           <div className="relative flex items-center gap-3 -mt-2">
@@ -73,12 +77,25 @@ export function Hangar({ save, set, back, toast }: Props) {
           </p>
 
           {/* Stat Specs */}
-          <div className="relative w-full max-w-[440px] mt-4 space-y-1.5 panel-soft p-3 rounded">
+          <div className="relative w-full max-w-[440px] mt-4 space-y-1.5 panel-soft p-3 rounded stat-rows">
             <StatRow label="HULL" value={plane.stats.hp} max={200} color="#10f0a0" />
             <StatRow label="SPEED" value={plane.stats.speed / 3.2} max={200} color="#2ee6ff" />
             <StatRow label="FIREPOWER" value={plane.stats.damage * 8} max={200} color="#ff5722" />
             <StatRow label="CADENCE" value={plane.stats.fireRate * 15} max={200} color="#ffd23d" />
-            <StatRow label="CRITICAL" value={plane.stats.crit * 500} max={200} color="#ff2d6f" />
+            <StatRow
+              label="CRITICAL"
+              value={Math.min(75, (plane.stats.crit + save.upgrades.critical * 0.015) * 100)}
+              max={75}
+              color="#ff2d6f"
+              suffix="%"
+            />
+            <StatRow
+              label="CRIT DAMAGE"
+              value={Math.min(500, (2.1 + save.upgrades.critDamage * 0.105) * 100)}
+              max={500}
+              color="#ff8a3d"
+              suffix="%"
+            />
           </div>
 
           {/* SIGNATURE PASSIVE — the airframe identity */}
@@ -402,10 +419,8 @@ export function Upgrades({ save, set, back, toast }: Props) {
             const maxed = lv >= 40;
 
             return (
-              <Panel key={k} className="p-3.5 sm:p-4 rounded flex items-center gap-3.5 border-cyan-400/30">
-                <div className="w-12 h-12 rounded bg-cyan-950/70 border border-cyan-400/40 flex items-center justify-center text-2xl shrink-0 shadow-[0_0_12px_rgba(46,230,255,0.15)]">
-                  {meta.icon}
-                </div>
+              <Panel key={k} className={`upgrade-row p-3.5 sm:p-4 rounded flex items-center gap-3.5 ${maxed ? "is-maxed" : save.coins >= cost ? "is-afford" : ""}`}>
+                <div className="upgrade-icon">{meta.icon}</div>
 
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between">
@@ -465,15 +480,9 @@ export function Achievements({ save, set, back, toast }: Props) {
             const claimed = save.achievements.includes(a.id);
 
             return (
-              <Panel key={a.id} className="p-3.5 rounded flex items-center gap-3.5 border-slate-700/70">
-                <div
-                  className="w-12 h-12 rounded bg-black/50 border flex items-center justify-center text-2xl shrink-0"
-                  style={{
-                    borderColor: done ? "#ffd23d" : "rgba(255,255,255,0.15)",
-                    filter: done ? "none" : "grayscale(1) opacity(0.4)",
-                  }}
-                >
-                  {a.icon}
+              <Panel key={a.id} className={`p-3.5 rounded flex items-center gap-3.5 medal-row ${claimed ? "is-claimed" : done ? "is-ready" : ""}`}>
+                <div className={`medal ${done ? "is-done" : ""}`}>
+                  <span className="medal-icon">{a.icon}</span>
                 </div>
 
                 <div className="flex-1 min-w-0">
@@ -533,6 +542,7 @@ export function Settings({ save, set, back, toast, onReset }: Props & { onReset:
 
         <Panel className="p-4 sm:p-5 space-y-4 border-cyan-400/40 rounded">
           <div className="pb-4 border-b border-cyan-500/20">
+            <div className="section-rule mb-2">{t("LANGUAGE")}</div>
             <LanguageSelect />
             <p className="text-xs text-slate-400 mt-2">{t("Applied instantly and saved on this device.")}</p>
           </div>

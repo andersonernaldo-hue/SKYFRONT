@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { HudState } from "../game/engine";
 import type { PlaneDef } from "../game/data/planes";
 import { CONFIG } from "../game/config";
@@ -14,6 +14,13 @@ export function Hud({
   const hpPct = Math.max(0, Math.min(100, (hud.hp / Math.max(1, hud.maxHp)) * 100));
   const hpColor = hpPct > 55 ? "#10f0a0" : hpPct > 25 ? "#ffb020" : "#ff3355";
   const [comboPop, setComboPop] = useState(0);
+  // "ghost" bar: lags behind real HP so damage chunks are legible
+  const [ghost, setGhost] = useState(hpPct);
+  useEffect(() => {
+    if (hpPct >= ghost) { setGhost(hpPct); return; }
+    const id = setTimeout(() => setGhost(hpPct), 380);
+    return () => clearTimeout(id);
+  }, [hpPct, ghost]);
 
   useEffect(() => {
     if (hud.combo > 1) setComboPop((c) => c + 1);
@@ -104,13 +111,19 @@ export function Hud({
           {/* Segmented HP Bar with tick marks for instant reading */}
           <div className="bar-track h-4 rounded-sm p-[1px] relative">
             <div
-              className="bar-fill h-full rounded-sm transition-all"
+              className="absolute inset-y-[1px] left-[1px] rounded-sm"
+              style={{ width: `${ghost}%`, background: "rgba(255,80,90,0.55)", transition: "width 0.5s cubic-bezier(0.16,1,0.3,1)" }}
+            />
+            <div
+              className="bar-fill h-full rounded-sm relative"
               style={{
                 width: `${hpPct}%`,
                 background: `linear-gradient(90deg, ${hpColor} 0%, #ffffff 140%)`,
                 boxShadow: `0 0 16px ${hpColor}`,
               }}
-            />
+            >
+              <span className="bar-shine" />
+            </div>
             <div className="absolute inset-0 flex pointer-events-none">
               {[0, 1, 2, 3].map((i) => (
                 <div key={i} className="flex-1 border-r border-black/45 last:border-r-0" />
@@ -401,8 +414,17 @@ function AbilityBtn({
 }) {
   const { t } = useI18n();
   const ready = cd <= 0;
-  const pct = max > 0 ? Math.max(0, Math.min(100, (1 - cd / max) * 100)) : 100;
-  const size = small ? 62 : 82;
+  const frac = max > 0 ? Math.max(0, Math.min(1, 1 - cd / max)) : 1;
+  const size = small ? 62 : 84;
+  const r = size / 2 - 4;
+  const circ = 2 * Math.PI * r;
+  // fire a one-shot flash the frame the cooldown completes
+  const wasReady = useRef(ready);
+  const [flash, setFlash] = useState(false);
+  useEffect(() => {
+    if (ready && !wasReady.current) { setFlash(true); const id = setTimeout(() => setFlash(false), 520); return () => clearTimeout(id); }
+    wasReady.current = ready;
+  }, [ready]);
 
   return (
     <button
@@ -410,49 +432,25 @@ function AbilityBtn({
       onClick={onClick}
       aria-label={`${t(label)}: ${ready ? t("READY") : `${Math.ceil(cd)}s`}`}
       aria-disabled={!ready}
-      className="group relative flex flex-col items-center justify-center rounded-full transition-all duration-150 active:scale-95 cursor-pointer"
-      style={{
-        width: size,
-        height: size,
-        background: `conic-gradient(${color} ${pct}%, rgba(255,255,255,0.06) ${pct}%)`,
-        boxShadow: active
-          ? `0 0 34px ${color}, inset 0 0 22px ${color}88`
-          : ready
-          ? `0 0 25px ${color}88, inset 0 0 15px ${color}44`
-          : "0 0 10px rgba(0,0,0,0.5)",
-        border: `2px solid ${active ? "#ffffff" : ready ? color : "rgba(255,255,255,0.15)"}`,
-      }}
+      className={`ability ${ready ? "is-ready" : ""} ${active ? "is-active" : ""} ${flash ? "is-flash" : ""}`}
+      style={{ width: size, height: size, ["--ab" as any]: color }}
     >
-      <span className="absolute inset-[4px] rounded-full bg-[#060e1d]/90 flex flex-col items-center justify-center backdrop-blur-md transition-all group-hover:bg-[#0a1830]">
-        <span
-          className="transition-transform duration-200 group-hover:scale-110"
-          style={{
-            fontSize: small ? 20 : 26,
-            filter: ready ? `drop-shadow(0 0 6px ${color})` : "grayscale(1) opacity(0.4)",
-          }}
-        >
-          {icon}
-        </span>
-        {!ready && max > 1 && (
-          <span className="font-tech text-[11px] font-bold text-white mt-0.5">{cd < 10 ? cd.toFixed(1) : Math.ceil(cd)}s</span>
-        )}
-        {ready && (
-          <span className="font-tech text-[8px] font-extrabold tracking-widest text-slate-300 mt-0.5">
-            {t(label)}
-          </span>
-        )}
+      <svg className="ability-ring" viewBox={`0 0 ${size} ${size}`} aria-hidden="true">
+        <circle cx={size / 2} cy={size / 2} r={r} className="ability-track" />
+        <circle
+          cx={size / 2} cy={size / 2} r={r}
+          className="ability-progress"
+          strokeDasharray={circ}
+          strokeDashoffset={circ * (1 - frac)}
+        />
+      </svg>
+      <span className="ability-core">
+        <span className="ability-icon" style={{ fontSize: small ? 20 : 26 }}>{icon}</span>
+        {!ready && max > 1 && <span className="ability-cd">{cd < 10 ? cd.toFixed(1) : Math.ceil(cd)}</span>}
+        {ready && !small && <span className="ability-label">{t(label)}</span>}
       </span>
-
-      {!small ? (
-        <span className="absolute -bottom-5 text-[9px] font-tech font-bold text-slate-300 whitespace-nowrap bg-black/60 px-1.5 py-0.5 rounded border border-white/10">
-          {hint ? <span className="text-cyan-400 mr-1">{hint}</span> : null}
-          {t(name)}
-        </span>
-      ) : hint ? (
-        <span className="absolute -bottom-4 text-[8px] font-tech font-bold text-cyan-300 whitespace-nowrap bg-black/60 px-1 rounded border border-white/10">
-          {hint}
-        </span>
-      ) : null}
+      {hint && <span className="ability-key">{hint}</span>}
+      {!small && <span className="ability-name">{t(name)}</span>}
     </button>
   );
 }

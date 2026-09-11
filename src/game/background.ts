@@ -83,13 +83,31 @@ export class Background {
     }
   }
 
+  // Cached full-screen gradients: they only depend on world + canvas height,
+  // so rebuilding them per frame was pure waste (3 gradients x 60fps).
+  private gSky: CanvasGradient | null = null;
+  private gFog: CanvasGradient | null = null;
+  private gVig: CanvasGradient | null = null;
+  private gKey = "";
+
   render(ctx: Ctx, quality: boolean) {
     const w = this.world;
-    const g = ctx.createLinearGradient(0, 0, 0, this.H);
-    g.addColorStop(0, w.sky[0]);
-    g.addColorStop(0.55, w.sky[1]);
-    g.addColorStop(1, w.sky[2]);
-    ctx.fillStyle = g;
+    const key = `${w.sky[0]}|${w.fog}|${this.W}x${this.H}`;
+    if (this.gKey !== key) {
+      this.gKey = key;
+      this.gSky = ctx.createLinearGradient(0, 0, 0, this.H);
+      this.gSky.addColorStop(0, w.sky[0]);
+      this.gSky.addColorStop(0.55, w.sky[1]);
+      this.gSky.addColorStop(1, w.sky[2]);
+      this.gFog = ctx.createLinearGradient(0, 0, 0, this.H);
+      this.gFog.addColorStop(0, w.fog);
+      this.gFog.addColorStop(0.5, "rgba(0,0,0,0)");
+      this.gFog.addColorStop(1, w.fog);
+      this.gVig = ctx.createRadialGradient(this.W / 2, this.H / 2, this.H * 0.28, this.W / 2, this.H / 2, this.H * 0.78);
+      this.gVig.addColorStop(0, "rgba(0,0,0,0)");
+      this.gVig.addColorStop(1, "rgba(0,0,0,0.55)");
+    }
+    ctx.fillStyle = this.gSky!;
     ctx.fillRect(0, 0, this.W, this.H);
 
     if (w.theme === "space" || w.theme === "city" || w.theme === "ice") {
@@ -105,20 +123,13 @@ export class Background {
       for (const it of l.items) this.drawItem(ctx, li, it, quality);
     });
 
-    // atmospheric fog overlay
-    const fg = ctx.createLinearGradient(0, 0, 0, this.H);
-    fg.addColorStop(0, w.fog);
-    fg.addColorStop(0.5, "rgba(0,0,0,0)");
-    fg.addColorStop(1, w.fog);
-    ctx.fillStyle = fg;
+    // atmospheric fog overlay (cached)
+    ctx.fillStyle = this.gFog!;
     ctx.fillRect(0, 0, this.W, this.H);
     this.renderWeather(ctx);
 
-    // vignette
-    const vg = ctx.createRadialGradient(this.W / 2, this.H / 2, this.H * 0.28, this.W / 2, this.H / 2, this.H * 0.78);
-    vg.addColorStop(0, "rgba(0,0,0,0)");
-    vg.addColorStop(1, "rgba(0,0,0,0.55)");
-    ctx.fillStyle = vg;
+    // vignette (cached)
+    ctx.fillStyle = this.gVig!;
     ctx.fillRect(0, 0, this.W, this.H);
   }
 

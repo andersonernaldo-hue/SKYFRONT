@@ -37,10 +37,10 @@ export function Modes({
         <ScreenTitle title="OPERATIONS" sub="Endless / Boss Rush / Daily" onBack={back} />
 
         {/* DAILY CHALLENGE */}
-        <Panel className="p-4 relative overflow-hidden border-amber-400/50">
+        <Panel className="p-4 relative overflow-hidden mode-card" style={{ ["--mc" as any]: "#ffb020" }}>
           <div className="absolute inset-0 pointer-events-none" style={{ background: "radial-gradient(circle at 15% 0%, rgba(255,180,40,0.14), transparent 60%)" }} />
           <div className="relative flex items-start gap-3">
-            <div className="text-4xl">{daily.icon}</div>
+            <div className="mode-glyph">{daily.icon}</div>
             <div className="flex-1">
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="font-tech text-base font-black text-amber-300">{t("DAILY CHALLENGE")}</span>
@@ -92,9 +92,9 @@ export function Modes({
         </Panel>
 
         {/* ENDLESS */}
-        <Panel className="p-4 mt-3 border-cyan-400/50">
+        <Panel className="p-4 mt-3 relative overflow-hidden mode-card" style={{ ["--mc" as any]: "#2ee6ff" }}>
           <div className="flex items-start gap-3">
-            <div className="text-4xl">♾️</div>
+            <div className="mode-glyph">♾️</div>
             <div className="flex-1">
               <div className="font-tech text-base font-black text-cyan-300">{t("ENDLESS SURVIVAL")}</div>
               <div className="text-[11px] text-slate-300 mt-0.5">
@@ -122,9 +122,9 @@ export function Modes({
         </Panel>
 
         {/* BOSS RUSH */}
-        <Panel className="p-4 mt-3 border-rose-400/50">
+        <Panel className="p-4 mt-3 relative overflow-hidden mode-card" style={{ ["--mc" as any]: "#ff2d6f" }}>
           <div className="flex items-start gap-3">
-            <div className="text-4xl">👹</div>
+            <div className="mode-glyph">👹</div>
             <div className="flex-1">
               <div className="font-tech text-base font-black text-rose-300">{t("BOSS RUSH")}</div>
               <div className="text-[11px] text-slate-300 mt-0.5">
@@ -165,9 +165,9 @@ export function Modes({
           ) : (
             <div className="grid gap-1">
               {board.map((r, i) => (
-                <div key={i} className="panel-soft px-2.5 py-1.5 rounded flex items-center gap-2 text-[11px]">
-                  <span className="font-tech font-black w-5" style={{ color: i === 0 ? "#ffd23d" : i === 1 ? "#c9d6e4" : i === 2 ? "#e08a4b" : "#7b8697" }}>
-                    {i + 1}
+                <div key={i} className={`panel-soft px-2.5 py-1.5 rounded flex items-center gap-2 text-[11px] lb-row ${i < 3 ? `lb-${i + 1}` : ""}`}>
+                  <span className="lb-rank font-tech font-black" style={{ color: i === 0 ? "#ffd23d" : i === 1 ? "#c9d6e4" : i === 2 ? "#e08a4b" : "#7b8697" }}>
+                    {i === 0 ? "🥇" : i === 1 ? "🥈" : i === 2 ? "🥉" : i + 1}
                   </span>
                   <span className="font-tech text-white flex-1">{n(r.score)}</span>
                   <span className="text-cyan-300 uppercase">{t(r.mode)} / {t(r.difficulty || "LEGACY")}</span>
